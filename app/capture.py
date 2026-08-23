@@ -27,6 +27,7 @@ from tkinter import filedialog, messagebox
 from typing import List, Optional, Tuple
 
 from . import fileio
+from . import theme as th
 from .model import Point, Signature
 from .ui import center_on_parent
 from .winutil import clear_timer_resolution, cursor_pos, set_timer_resolution
@@ -49,7 +50,7 @@ class CaptureWindow(tk.Toplevel):
         super().__init__(master)
         self.title("Draw your signature")
         self.resizable(False, False)
-        self.configure(bg="#f4f6f9")
+        self.configure(bg=th.BG)
 
         # result stays None unless the user explicitly accepts via "Use this".
         self.result: Optional[Signature] = None
@@ -83,9 +84,9 @@ class CaptureWindow(tk.Toplevel):
         hint = tk.Label(
             self,
             text="Sign or write below using your pen or mouse. Multiple strokes are fine.",
-            bg="#f4f6f9",
-            fg="#33475b",
-            font=("Segoe UI", 10),
+            bg=th.BG,
+            fg=th.TEXT,
+            font=th.BODY,
             pady=8,
         )
         hint.pack(fill="x")
@@ -94,9 +95,9 @@ class CaptureWindow(tk.Toplevel):
             self,
             width=CANVAS_WIDTH,
             height=CANVAS_HEIGHT,
-            bg="white",
+            bg=th.SURFACE,
             highlightthickness=1,
-            highlightbackground="#b8c4d4",
+            highlightbackground=th.BORDER_STRONG,
             cursor="pencil",
         )
         self.canvas.pack(padx=12, pady=4)
@@ -106,31 +107,20 @@ class CaptureWindow(tk.Toplevel):
         self.canvas.bind("<B1-Motion>", self._on_motion)
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
 
-        bar = tk.Frame(self, bg="#f4f6f9")
+        bar = tk.Frame(self, bg=th.BG)
         bar.pack(fill="x", padx=12, pady=10)
 
-        def add_btn(text, cmd, side="left", accent=False):
-            btn = tk.Button(
-                bar,
-                text=text,
-                command=cmd,
-                font=("Segoe UI", 10),
-                padx=12,
-                pady=4,
-                bg="#2d6cdf" if accent else "#e7ecf3",
-                fg="white" if accent else "#1f2d3d",
-                activebackground="#1f57c0" if accent else "#d4dce6",
-                relief="flat",
-                cursor="hand2",
-            )
-            btn.pack(side=side, padx=4)
+        def add_btn(text, cmd, side="left", kind="secondary"):
+            btn = th.Button(bar, text, cmd, kind=kind)
+            btn.pack(side=side, padx=(0, th.GAP) if side == "left" else (th.GAP, 0))
             return btn
 
         add_btn("Clear", self._clear)
         add_btn("Undo stroke", self._undo)
         add_btn("Save to file…", self._save)
+        # Right-hand side packs outward, so "Use this" ends up rightmost.
+        add_btn("Use this", self._use, side="right", kind="primary")
         add_btn("Cancel", self._cancel, side="right")
-        add_btn("Use this", self._use, side="right", accent=True)
 
         self.bind("<Escape>", lambda _e: self._cancel())
 

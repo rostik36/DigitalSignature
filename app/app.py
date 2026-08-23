@@ -28,6 +28,7 @@ from .capture import CaptureWindow
 from .model import Box, Signature
 from .overlay import BoxSelector
 from .replay import Replayer, ReplayOptions
+from . import theme as th
 from .ui import center_on_parent, center_on_screen
 
 PREVIEW_W = 420
@@ -39,7 +40,7 @@ class App(tk.Tk):
         super().__init__()
         self.title("Digital Signature")
         self.resizable(False, False)
-        self.configure(bg="#f4f6f9")
+        self.configure(bg=th.BG)
 
         self.signature: Optional[Signature] = None
         self.options = ReplayOptions()
@@ -60,106 +61,100 @@ class App(tk.Tk):
 
     # --------------------------------------------------------------- UI
     def _build_ui(self) -> None:
-        header = tk.Label(
-            self,
-            text="Digital Signature",
-            bg="#f4f6f9",
-            fg="#1f2d3d",
-            font=("Segoe UI", 16, "bold"),
-            pady=10,
-        )
-        header.pack(fill="x")
+        """Lay the window out as the two steps the task actually has:
+        get a signature, then place it on a form."""
+        self.configure(bg=th.BG)
 
-        sub = tk.Label(
-            self,
-            text="Capture your signature once, then have the mouse re-draw it inside any\n"
-            "box you select on screen — e.g. a form's signature field.",
-            bg="#f4f6f9",
-            fg="#52606d",
-            font=("Segoe UI", 10),
-            justify="center",
-        )
-        sub.pack(fill="x", padx=16)
+        self._build_header()
+        self._build_status_bar()   # packed to the bottom before the body fills
+        self._build_footer()
 
-        self.preview = tk.Canvas(
-            self,
-            width=PREVIEW_W,
-            height=PREVIEW_H,
-            bg="white",
-            highlightthickness=1,
-            highlightbackground="#b8c4d4",
-        )
-        self.preview.pack(padx=16, pady=12)
-        self._render_preview()
+        body = tk.Frame(self, bg=th.BG)
+        body.pack(fill="both", expand=True, padx=th.GUTTER)
 
-        row1 = tk.Frame(self, bg="#f4f6f9")
-        row1.pack(fill="x", padx=16)
-        self._btn(row1, "Draw signature…", self._draw, accent=True).pack(side="left", expand=True, fill="x", padx=4)
-        self._btn(row1, "Load…", self._load).pack(side="left", expand=True, fill="x", padx=4)
-        self._btn(row1, "Save…", self._save).pack(side="left", expand=True, fill="x", padx=4)
-
-        row2 = tk.Frame(self, bg="#f4f6f9")
-        row2.pack(fill="x", padx=16, pady=(8, 4))
-        self.sign_btn = self._btn(row2, "Select box & sign", self._sign_new, accent=True)
-        self.sign_btn.pack(side="left", expand=True, fill="x", padx=4)
-        self.again_btn = self._btn(row2, "Sign again (last box)", self._sign_again)
-        self.again_btn.pack(side="left", expand=True, fill="x", padx=4)
-
-        fit_row = tk.Frame(self, bg="#f4f6f9")
-        fit_row.pack(fill="x", padx=20, pady=(2, 0))
-        self.stretch_var = tk.BooleanVar(value=self.options.stretch_to_fill)
-        tk.Checkbutton(
-            fit_row,
-            text="Stretch to fill the whole box (distorts aspect ratio)",
-            variable=self.stretch_var,
-            command=self._on_stretch_toggle,
-            bg="#f4f6f9",
-            fg="#33475b",
-            activebackground="#f4f6f9",
-            font=("Segoe UI", 9),
-            anchor="w",
-        ).pack(side="left")
-
-        row3 = tk.Frame(self, bg="#f4f6f9")
-        row3.pack(fill="x", padx=16, pady=(4, 4))
-        self._btn(row3, "Settings…", self._open_settings).pack(side="left", padx=4)
-        tk.Label(
-            row3,
-            text="Tip: press Esc any time during signing to stop the mouse.",
-            bg="#f4f6f9",
-            fg="#7b8794",
-            font=("Segoe UI", 9, "italic"),
-        ).pack(side="right")
-
-        self.status = tk.Label(
-            self,
-            text="Ready. Draw or load a signature to begin.",
-            bg="#e7ecf3",
-            fg="#1f2d3d",
-            anchor="w",
-            font=("Segoe UI", 9),
-            padx=10,
-            pady=6,
-        )
-        self.status.pack(fill="x", side="bottom")
+        self._build_signature_section(body)
+        self._build_sign_section(body)
 
         self._refresh_buttons()
 
-    def _btn(self, parent, text, cmd, accent=False) -> tk.Button:
-        return tk.Button(
-            parent,
-            text=text,
-            command=cmd,
-            font=("Segoe UI", 10),
-            padx=12,
-            pady=6,
-            bg="#2d6cdf" if accent else "#e7ecf3",
-            fg="white" if accent else "#1f2d3d",
-            activebackground="#1f57c0" if accent else "#d4dce6",
-            disabledforeground="#aab4c0",
-            relief="flat",
-            cursor="hand2",
+    def _build_header(self) -> None:
+        head = tk.Frame(self, bg=th.BG)
+        head.pack(fill="x", padx=th.GUTTER, pady=(16, 10))
+
+        tk.Label(head, text="Digital Signature", bg=th.BG, fg=th.TEXT,
+                 font=th.TITLE, anchor="w").pack(fill="x")
+        tk.Label(head,
+                 text="Capture your signature once, then have the mouse re-draw it "
+                      "inside any box you pick on screen.",
+                 bg=th.BG, fg=th.TEXT_MUTED, font=th.BODY_SMALL,
+                 anchor="w", justify="left", wraplength=PREVIEW_W + 40
+                 ).pack(fill="x", pady=(3, 0))
+
+    def _build_signature_section(self, parent: tk.Frame) -> None:
+        th.section_label(parent, "1 · Your signature").pack(fill="x", pady=(2, 6))
+
+        card = th.card(parent)
+        card.pack(fill="x")
+
+        self.preview = tk.Canvas(card, width=PREVIEW_W, height=PREVIEW_H,
+                                 bg=th.SURFACE, highlightthickness=0, bd=0)
+        self.preview.pack(padx=1, pady=(1, 0))
+        self._render_preview()
+
+        th.separator(card).pack(fill="x")
+
+        # Actions live inside the card, directly under what they act on.
+        tools = tk.Frame(card, bg=th.SURFACE)
+        tools.pack(fill="x", padx=10, pady=9)
+
+        self.draw_btn = th.Button(tools, "Draw signature…", self._draw, padx=12)
+        self.draw_btn.pack(side="left")
+        th.Button(tools, "Load…", self._load, padx=12).pack(side="left", padx=(th.GAP, 0))
+        self.save_btn = th.Button(tools, "Save…", self._save, padx=12)
+        self.save_btn.pack(side="left", padx=(th.GAP, 0))
+
+        self.sig_info = tk.Label(tools, text="", bg=th.SURFACE, fg=th.TEXT_FAINT,
+                                 font=th.HINT, anchor="e")
+        self.sig_info.pack(side="right")
+
+    def _build_sign_section(self, parent: tk.Frame) -> None:
+        th.section_label(parent, "2 · Sign a form").pack(fill="x", pady=(th.GAP_LG, 6))
+
+        # The primary action is the only filled button in the window, so where
+        # to click next is never ambiguous.
+        self.sign_btn = th.Button(parent, "Select box & sign", self._sign_new,
+                                  kind="primary", pady=10)
+        self.sign_btn.pack(fill="x")
+
+        self.again_btn = th.Button(parent, "Sign again in the last box", self._sign_again)
+        self.again_btn.pack(fill="x", pady=(th.GAP, 0))
+
+        self.stretch_var = tk.BooleanVar(value=self.options.stretch_to_fill)
+        tk.Checkbutton(
+            parent, text="Stretch to fill the whole box (distorts aspect ratio)",
+            variable=self.stretch_var, command=self._on_stretch_toggle,
+            bg=th.BG, fg=th.TEXT_MUTED, activebackground=th.BG,
+            activeforeground=th.TEXT, selectcolor=th.SURFACE,
+            font=th.BODY_SMALL, anchor="w", padx=0, highlightthickness=0,
+        ).pack(fill="x", pady=(th.GAP, 0))
+
+    def _build_footer(self) -> None:
+        footer = tk.Frame(self, bg=th.BG)
+        footer.pack(fill="x", side="bottom", padx=th.GUTTER, pady=(12, 14))
+
+        th.Button(footer, "Settings…", self._open_settings, kind="ghost",
+                  padx=10, pady=5).pack(side="left")
+        tk.Label(footer, text="Press Esc while signing to stop the mouse.",
+                 bg=th.BG, fg=th.TEXT_FAINT, font=th.HINT_ITALIC
+                 ).pack(side="right", pady=4)
+
+    def _build_status_bar(self) -> None:
+        self.status = tk.Label(
+            self, text="Ready — draw or load a signature to begin.",
+            bg="#e2e8f1", fg=th.TEXT_MUTED, anchor="w",
+            font=th.BODY_SMALL, padx=th.GUTTER, pady=7,
         )
+        self.status.pack(fill="x", side="bottom")
 
     def _set_status(self, text: str) -> None:
         self.status.config(text=text)
@@ -171,22 +166,33 @@ class App(tk.Tk):
 
     def _refresh_buttons(self) -> None:
         has_sig = self.signature is not None and not self.signature.is_empty()
-        state = "normal" if (has_sig and not self._busy) else "disabled"
-        self.sign_btn.config(state=state)
-        self.again_btn.config(
-            state="normal" if (has_sig and self._last_box is not None and not self._busy) else "disabled"
-        )
+        self.sign_btn.set_state(has_sig and not self._busy)
+        self.again_btn.set_state(has_sig and self._last_box is not None and not self._busy)
+        self.save_btn.set_state(has_sig and not self._busy)
+        self.draw_btn.set_state(not self._busy)
+
+        # Summarise the loaded signature next to the buttons that act on it.
+        if has_sig:
+            pts = sum(len(s) for s in self.signature.strokes)
+            n = len(self.signature.strokes)
+            self.sig_info.config(text=f"{n} stroke{'s' if n != 1 else ''} · {pts} points")
+        else:
+            self.sig_info.config(text="")
 
     # ------------------------------------------------------------ preview
     def _render_preview(self) -> None:
         self.preview.delete("all")
         if self.signature is None or self.signature.is_empty():
+            # Dashed placeholder reads as "a signature goes here" rather than
+            # as an empty white box the user might mistake for a bug.
+            self.preview.create_rectangle(
+                14, 14, PREVIEW_W - 14, PREVIEW_H - 14,
+                outline=th.BORDER_STRONG, dash=(4, 4),
+            )
             self.preview.create_text(
-                PREVIEW_W // 2,
-                PREVIEW_H // 2,
-                text="(no signature yet)",
-                fill="#aab4c0",
-                font=("Segoe UI", 11, "italic"),
+                PREVIEW_W // 2, PREVIEW_H // 2,
+                text="No signature yet — click “Draw signature…”",
+                fill=th.TEXT_FAINT, font=(th.FAMILY, 10),
             )
             return
         strokes = self.signature.map_to_box((0, 0, PREVIEW_W, PREVIEW_H), padding_frac=0.10)
@@ -392,7 +398,7 @@ class SettingsDialog(tk.Toplevel):
         self.app = app
         self.title("Settings")
         self.resizable(False, False)
-        self.configure(bg="#f4f6f9")
+        self.configure(bg=th.BG)
         self.transient(app)
         self.grab_set()
 
@@ -409,29 +415,32 @@ class SettingsDialog(tk.Toplevel):
 
     def _label(self, grid: tk.Frame, row: int, text: str) -> None:
         tk.Label(
-            grid, text=text, bg="#f4f6f9", fg="#33475b", font=("Segoe UI", 10), anchor="w"
-        ).grid(row=row, column=0, sticky="w", pady=5, padx=(0, 16))
+            grid, text=text, bg=th.BG, fg=th.TEXT, font=th.BODY, anchor="w"
+        ).grid(row=row, column=0, sticky="w", pady=6, padx=(0, 16))
 
     def _spin(self, grid, row, label, var, frm, to, inc):
         self._label(grid, row, label)
         tk.Spinbox(
-            grid, from_=frm, to=to, increment=inc, textvariable=var, width=8, justify="right"
-        ).grid(row=row, column=1, sticky="e", pady=5)
+            grid, from_=frm, to=to, increment=inc, textvariable=var, width=8,
+            justify="right", font=th.BODY_SMALL, relief="flat",
+            bg=th.SURFACE, highlightthickness=1, highlightbackground=th.BORDER,
+        ).grid(row=row, column=1, sticky="e", pady=6)
 
     def _check(self, grid, row, label, var):
         self._label(grid, row, label)
-        tk.Checkbutton(grid, variable=var, bg="#f4f6f9", activebackground="#f4f6f9").grid(
-            row=row, column=1, sticky="e", pady=5
+        tk.Checkbutton(grid, variable=var, bg=th.BG, activebackground=th.BG,
+                       selectcolor=th.SURFACE, highlightthickness=0).grid(
+            row=row, column=1, sticky="e", pady=6
         )
 
     def _build(self) -> None:
-        tk.Label(
-            self, text="Replay settings", bg="#f4f6f9", fg="#1f2d3d", font=("Segoe UI", 13, "bold"), pady=8
-        ).pack(fill="x")
+        tk.Label(self, text="Replay settings", bg=th.BG, fg=th.TEXT,
+                 font=(th.FAMILY, 13, "bold"), anchor="w"
+                 ).pack(fill="x", padx=th.GUTTER, pady=(14, 8))
 
         # A two-column grid keeps every label/control pair on its own aligned row.
-        grid = tk.Frame(self, bg="#f4f6f9")
-        grid.pack(fill="x", padx=18, pady=2)
+        grid = tk.Frame(self, bg=th.BG)
+        grid.pack(fill="x", padx=th.GUTTER, pady=2)
         grid.columnconfigure(0, weight=1)  # labels take the slack; controls hug right
 
         self._check(grid, 0, "Reproduce natural speed", self._use_timing)
@@ -444,17 +453,17 @@ class SettingsDialog(tk.Toplevel):
         tk.Label(
             self,
             text="“Fixed step delay” is used only when natural speed is off.",
-            bg="#f4f6f9",
-            fg="#7b8794",
-            font=("Segoe UI", 8, "italic"),
+            bg=th.BG,
+            fg=th.TEXT_FAINT,
+            font=th.HINT_ITALIC,
             wraplength=360,
             justify="left",
-        ).pack(fill="x", padx=18, pady=(2, 4))
+        ).pack(fill="x", padx=th.GUTTER, pady=(6, 2))
 
-        bar = tk.Frame(self, bg="#f4f6f9")
-        bar.pack(fill="x", padx=14, pady=10)
-        tk.Button(bar, text="Cancel", command=self.destroy, relief="flat", bg="#e7ecf3", padx=12, pady=4).pack(side="right", padx=4)
-        tk.Button(bar, text="Save", command=self._save, relief="flat", bg="#2d6cdf", fg="white", padx=12, pady=4).pack(side="right", padx=4)
+        bar = tk.Frame(self, bg=th.BG)
+        bar.pack(fill="x", padx=th.GUTTER, pady=(10, 14))
+        th.Button(bar, "Save", self._save, kind="primary").pack(side="right")
+        th.Button(bar, "Cancel", self.destroy).pack(side="right", padx=(0, th.GAP))
 
     def _save(self) -> None:
         opt = self.app.options

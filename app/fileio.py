@@ -14,6 +14,7 @@ from tkinter import messagebox
 from typing import Optional
 
 from . import hello, vault
+from . import theme as th
 from .model import Signature
 from .ui import center_on_screen
 
@@ -41,7 +42,7 @@ class PassphraseDialog(tk.Toplevel):
 
         self.title("Encrypted signature")
         self.resizable(False, False)
-        self.configure(bg="#f4f6f9")
+        self.configure(bg=th.BG)
         self.transient(parent if isinstance(parent, (tk.Tk, tk.Toplevel)) else None)
         self.grab_set()
 
@@ -58,50 +59,51 @@ class PassphraseDialog(tk.Toplevel):
     def _build(self) -> None:
         title = "Set a passphrase to encrypt this signature" if self.mode == "set" \
             else "Enter the passphrase to unlock this signature"
-        tk.Label(self, text=title, bg="#f4f6f9", fg="#1f2d3d",
-                 font=("Segoe UI", 11, "bold"), wraplength=360, justify="left", pady=8
+        tk.Label(self, text=title, bg=th.BG, fg=th.TEXT,
+                 font=(th.FAMILY, 11, "bold"), wraplength=360, justify="left", pady=8
                  ).pack(fill="x", padx=16, pady=(10, 2))
 
-        body = tk.Frame(self, bg="#f4f6f9")
+        body = tk.Frame(self, bg=th.BG)
         body.pack(fill="x", padx=16, pady=4)
 
-        tk.Label(body, text="Passphrase", bg="#f4f6f9", fg="#33475b", font=("Segoe UI", 10)
+        tk.Label(body, text="Passphrase", bg=th.BG, fg=th.TEXT, font=th.BODY
                  ).grid(row=0, column=0, sticky="w", pady=4)
         self._entry = tk.Entry(body, textvariable=self._pp, show="•", width=30)
         self._entry.grid(row=0, column=1, sticky="ew", pady=4, padx=(10, 0))
 
         if self.mode == "set":
-            tk.Label(body, text="Confirm", bg="#f4f6f9", fg="#33475b", font=("Segoe UI", 10)
+            tk.Label(body, text="Confirm", bg=th.BG, fg=th.TEXT, font=th.BODY
                      ).grid(row=1, column=0, sticky="w", pady=4)
             self._entry2 = tk.Entry(body, textvariable=self._pp2, show="•", width=30)
             self._entry2.grid(row=1, column=1, sticky="ew", pady=4, padx=(10, 0))
         body.columnconfigure(1, weight=1)
 
         tk.Checkbutton(self, text="Show passphrase", variable=self._show, command=self._toggle_show,
-                       bg="#f4f6f9", activebackground="#f4f6f9", fg="#52606d", font=("Segoe UI", 9)
+                       bg=th.BG, activebackground=th.BG, fg=th.TEXT_MUTED, font=th.BODY_SMALL
                        ).pack(anchor="w", padx=16)
 
         if self.mode == "set" and self.hello_available:
             tk.Checkbutton(self, text="Also allow Windows Hello (face/fingerprint) unlock",
-                           variable=self._enable_hello, bg="#f4f6f9", activebackground="#f4f6f9",
-                           fg="#52606d", font=("Segoe UI", 9)).pack(anchor="w", padx=16)
+                           variable=self._enable_hello, bg=th.BG, activebackground=th.BG,
+                           fg=th.TEXT_MUTED, font=th.BODY_SMALL).pack(anchor="w", padx=16)
 
         if self.mode == "set":
             tk.Label(self, text="The passphrase is required (in addition to your Windows account) "
                                 "to open this file. There is no way to recover it if forgotten.",
-                     bg="#f4f6f9", fg="#7b8794", font=("Segoe UI", 8, "italic"),
+                     bg=th.BG, fg=th.TEXT_FAINT, font=th.HINT_ITALIC,
                      wraplength=360, justify="left").pack(fill="x", padx=16, pady=(2, 4))
 
-        bar = tk.Frame(self, bg="#f4f6f9")
-        bar.pack(fill="x", padx=14, pady=10)
-        tk.Button(bar, text="Cancel", command=self._cancel, relief="flat", bg="#e7ecf3",
-                  padx=12, pady=4).pack(side="right", padx=4)
+        bar = tk.Frame(self, bg=th.BG)
+        bar.pack(fill="x", padx=th.GUTTER, pady=(10, 14))
         ok_text = "Encrypt & save" if self.mode == "set" else "Unlock"
-        tk.Button(bar, text=ok_text, command=self._ok, relief="flat", bg="#2d6cdf", fg="white",
-                  padx=12, pady=4).pack(side="right", padx=4)
+        th.Button(bar, ok_text, self._ok, kind="primary").pack(side="right")
+        th.Button(bar, "Cancel", self._cancel).pack(side="right", padx=(0, th.GAP))
         if self.mode == "enter" and self.hello_available:
-            tk.Button(bar, text="Use Windows Hello", command=self._use_hello, relief="flat",
-                      bg="#3aa76d", fg="white", padx=12, pady=4).pack(side="left", padx=4)
+            hb = th.Button(bar, "Use Windows Hello", self._use_hello)
+            hb.config(bg=th.SUCCESS, fg="white", activebackground="#27694a")
+            hb._rest = th.SUCCESS
+            hb._hover = "#27694a"
+            hb.pack(side="left")
 
     def _toggle_show(self) -> None:
         ch = "" if self._show.get() else "•"
@@ -156,7 +158,7 @@ class SaveOptionsDialog(tk.Toplevel):
 
         self.title("Save signature")
         self.resizable(False, False)
-        self.configure(bg="#f4f6f9")
+        self.configure(bg=th.BG)
         self.transient(parent if isinstance(parent, (tk.Tk, tk.Toplevel)) else None)
         self.grab_set()
 
@@ -177,93 +179,91 @@ class SaveOptionsDialog(tk.Toplevel):
     # -- layout ---------------------------------------------------------
     def _option(self, parent: tk.Misc, mode: str, title: str, badge: str,
                 badge_fg: str, detail: str) -> tk.Frame:
-        row = tk.Frame(parent, bg="#f4f6f9")
+        row = tk.Frame(parent, bg=th.BG)
         row.pack(fill="x", pady=(6, 0))
-        head = tk.Frame(row, bg="#f4f6f9")
+        head = tk.Frame(row, bg=th.BG)
         head.pack(fill="x")
         tk.Radiobutton(head, text=title, value=mode, variable=self._mode,
-                       command=self._sync_enabled, bg="#f4f6f9", activebackground="#f4f6f9",
-                       fg="#1f2d3d", font=("Segoe UI", 10, "bold")).pack(side="left")
-        tk.Label(head, text=badge, bg="#f4f6f9", fg=badge_fg,
+                       command=self._sync_enabled, bg=th.BG, activebackground=th.BG,
+                       fg=th.TEXT, font=(th.FAMILY, 10, "bold")).pack(side="left")
+        tk.Label(head, text=badge, bg=th.BG, fg=badge_fg,
                  font=("Segoe UI", 8, "bold")).pack(side="left", padx=(4, 0))
-        tk.Label(row, text=detail, bg="#f4f6f9", fg="#7b8794", font=("Segoe UI", 8),
+        tk.Label(row, text=detail, bg=th.BG, fg=th.TEXT_FAINT, font=th.HINT,
                  wraplength=380, justify="left").pack(anchor="w", padx=(24, 0))
         return row
 
     def _build(self) -> None:
-        tk.Label(self, text="How should this signature be protected?", bg="#f4f6f9",
-                 fg="#1f2d3d", font=("Segoe UI", 11, "bold"), wraplength=400,
+        tk.Label(self, text="How should this signature be protected?", bg=th.BG,
+                 fg=th.TEXT, font=(th.FAMILY, 11, "bold"), wraplength=400,
                  justify="left").pack(fill="x", padx=16, pady=(12, 2))
 
-        wrap = tk.Frame(self, bg="#f4f6f9")
+        wrap = tk.Frame(self, bg=th.BG)
         wrap.pack(fill="x", padx=16)
 
         # 1. passphrase
-        self._option(wrap, MODE_PASSPHRASE, "Passphrase", "strongest", "#2f855a",
-                     "Needs the passphrase AND this Windows account to open. "
-                     "Cannot be recovered if forgotten.")
-        fields = tk.Frame(wrap, bg="#f4f6f9")
+        self._option(wrap, MODE_PASSPHRASE, "Passphrase", "recommended", th.SUCCESS,
+                     "Encrypted with your passphrase, so it opens on any computer. "
+                     "There is no way to recover it if you forget the passphrase.")
+        fields = tk.Frame(wrap, bg=th.BG)
         fields.pack(fill="x", padx=(24, 0), pady=(2, 0))
-        tk.Label(fields, text="Passphrase", bg="#f4f6f9", fg="#33475b",
-                 font=("Segoe UI", 9)).grid(row=0, column=0, sticky="w", pady=2)
+        tk.Label(fields, text="Passphrase", bg=th.BG, fg=th.TEXT,
+                 font=th.BODY_SMALL).grid(row=0, column=0, sticky="w", pady=2)
         self._entry = tk.Entry(fields, textvariable=self._pp, show="•", width=26)
         self._entry.grid(row=0, column=1, sticky="ew", pady=2, padx=(8, 0))
-        tk.Label(fields, text="Confirm", bg="#f4f6f9", fg="#33475b",
-                 font=("Segoe UI", 9)).grid(row=1, column=0, sticky="w", pady=2)
+        tk.Label(fields, text="Confirm", bg=th.BG, fg=th.TEXT,
+                 font=th.BODY_SMALL).grid(row=1, column=0, sticky="w", pady=2)
         self._entry2 = tk.Entry(fields, textvariable=self._pp2, show="•", width=26)
         self._entry2.grid(row=1, column=1, sticky="ew", pady=2, padx=(8, 0))
         fields.columnconfigure(1, weight=1)
 
         self._show_cb = tk.Checkbutton(wrap, text="Show passphrase", variable=self._show,
-                                       command=self._toggle_show, bg="#f4f6f9",
-                                       activebackground="#f4f6f9", fg="#52606d",
-                                       font=("Segoe UI", 8))
+                                       command=self._toggle_show, bg=th.BG,
+                                       activebackground=th.BG, fg=th.TEXT_MUTED,
+                                       font=th.HINT)
         self._show_cb.pack(anchor="w", padx=(24, 0))
 
-        tk.Frame(self, bg="#dde3ec", height=1).pack(fill="x", padx=16, pady=(10, 0))
+        tk.Frame(self, bg=th.BORDER, height=1).pack(fill="x", padx=16, pady=(10, 0))
 
         # 2. no passphrase, DPAPI only
-        self._option(wrap, MODE_NO_PASSPHRASE, "No passphrase", "this PC only", "#b7791f",
+        self._option(wrap, MODE_NO_PASSPHRASE, "No passphrase", "this PC only", th.WARN,
                      "Saves immediately with no prompt. Protected by this Windows "
                      "account alone, so it always stays on this computer and anyone "
                      "using your unlocked session can open it.")
 
         # 3. plain
-        self._option(wrap, MODE_PLAIN, "No protection", "readable by anyone", "#c53030",
+        self._option(wrap, MODE_PLAIN, "No protection", "readable by anyone", th.DANGER,
                      "⚠ Saved as readable JSON. Anyone who gets this file can replay "
                      "your signature.")
 
-        tk.Frame(self, bg="#dde3ec", height=1).pack(fill="x", padx=16, pady=(12, 0))
+        tk.Frame(self, bg=th.BORDER, height=1).pack(fill="x", padx=16, pady=(12, 0))
 
-        extra = tk.Frame(self, bg="#f4f6f9")
+        extra = tk.Frame(self, bg=th.BG)
         extra.pack(fill="x", padx=16, pady=(8, 0))
         self._tie_cb = tk.Checkbutton(
             extra, text="Also tie this file to this computer", variable=self._tie,
-            command=self._sync_enabled, bg="#f4f6f9", activebackground="#f4f6f9",
-            fg="#1f2d3d", font=("Segoe UI", 9, "bold"))
+            command=self._sync_enabled, bg=th.BG, activebackground=th.BG,
+            fg=th.TEXT, font=th.SECTION)
         self._tie_cb.pack(anchor="w")
         self._tie_note = tk.Label(
             extra,
             text="Off: the file opens on any computer with the passphrase.\n"
                  "On: adds your Windows account as a second lock — it will NOT open "
                  "on another PC, even with the correct passphrase.",
-            bg="#f4f6f9", fg="#7b8794", font=("Segoe UI", 8),
+            bg=th.BG, fg=th.TEXT_FAINT, font=th.HINT,
             wraplength=380, justify="left")
         self._tie_note.pack(anchor="w", padx=(24, 0))
 
         self._hello_cb = tk.Checkbutton(
             extra, text="Allow Windows Hello (face/fingerprint) unlock",
-            variable=self._enable_hello, bg="#f4f6f9", activebackground="#f4f6f9",
-            fg="#52606d", font=("Segoe UI", 8))
+            variable=self._enable_hello, bg=th.BG, activebackground=th.BG,
+            fg=th.TEXT_MUTED, font=th.HINT)
         if self.hello_available:
             self._hello_cb.pack(anchor="w", padx=(24, 0), pady=(4, 0))
 
-        bar = tk.Frame(self, bg="#f4f6f9")
-        bar.pack(fill="x", padx=14, pady=12)
-        tk.Button(bar, text="Cancel", command=self._cancel, relief="flat", bg="#e7ecf3",
-                  padx=12, pady=4).pack(side="right", padx=4)
-        tk.Button(bar, text="Save", command=self._ok, relief="flat", bg="#2d6cdf",
-                  fg="white", padx=14, pady=4).pack(side="right", padx=4)
+        bar = tk.Frame(self, bg=th.BG)
+        bar.pack(fill="x", padx=th.GUTTER, pady=(12, 14))
+        th.Button(bar, "Save", self._ok, kind="primary").pack(side="right")
+        th.Button(bar, "Cancel", self._cancel).pack(side="right", padx=(0, th.GAP))
 
     # -- behaviour ------------------------------------------------------
     def _sync_enabled(self) -> None:
@@ -294,7 +294,7 @@ class SaveOptionsDialog(tk.Toplevel):
                 self._enable_hello.set(False)
                 self._hello_cb.config(state="disabled")
 
-        self._tie_note.config(fg="#7b8794" if mode == MODE_PASSPHRASE else "#a9b4c0")
+        self._tie_note.config(fg=th.TEXT_FAINT if mode == MODE_PASSPHRASE else th.DISABLED_FG)
 
     def _toggle_show(self) -> None:
         ch = "" if self._show.get() else "•"
