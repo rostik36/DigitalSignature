@@ -103,11 +103,28 @@ A signature is a list of strokes, each a list of `[x, y, t, p]` samples (canvas
 pixels, seconds since start, pressure). Coordinates are only mapped to the real
 screen at signing time, so one capture works in any box of any size.
 
-Two on-disk formats, chosen by the extension you save with:
+When you save, the app asks how the signature should be protected. Your choice
+sets the real file extension, so you don't have to know the formats in advance:
+
+| Choice | What you get | Opens on another PC? |
+|--------|--------------|----------------------|
+| **Passphrase** *(strongest)* | `.sigx` — needs the passphrase **and** your Windows account | No |
+| **No passphrase** *(this PC only)* | `.sigx` — encrypted, opens with no prompt | No |
+| **No protection** *(portable)* | `.sig.json` — plain, readable JSON | Yes |
+
+"No passphrase" still encrypts the file and still ties it to your Windows
+account, so a stolen copy is useless — but anyone using your *unlocked* session
+can open it. "No protection" is the only portable option, and it stores your
+signature in the clear: anyone with that file can replay your real signature.
+Use it to move a signature between machines, then re-save with a passphrase and
+delete the plain copy.
+
+The two on-disk formats in detail:
 
 - **`*.sigx` — encrypted (recommended, the default).** Protected by **two
   independent factors**: your **Windows account** (DPAPI) **and** a **passphrase**
-  you set (PBKDF2-HMAC-SHA256, 200k iterations). Both are required to open it, so
+  you set (PBKDF2-HMAC-SHA256, 200k iterations) — or by the Windows account alone
+  if you chose "No passphrase". Both are required to open it, so
   even someone on your *already-unlocked* Windows session can't read it without
   the passphrase. Optionally, **Windows Hello** (face/fingerprint) can be enabled
   as a convenient unlock — then the file opens with the passphrase **or** a live
@@ -122,9 +139,10 @@ Two on-disk formats, chosen by the extension you save with:
   > second machine, either re-capture it there, or transfer it as `.sig.json`
   > (**unencrypted — treat that file as sensitive**) and re-save it as `.sigx`
   > on the new PC.
-- **`*.sig.json` — plain JSON (not encrypted).** Human-readable; use it only for
-  interop (e.g. importing a capture produced by an external tool that writes
-  the same `[x, y, t, p]` shape).
+- **`*.sig.json` — plain JSON (not encrypted).** Human-readable. Written when you
+  pick "No protection", and useful for moving a signature to another PC or for
+  interop with anything that writes the same `[x, y, t, p]` shape. **Treat it as
+  sensitive:** it is your signature in the clear.
 
 See **[FORMAT.md](FORMAT.md)** for the full byte layout, the JSON schema, field
 units, and exactly what the encryption does and does not hide.

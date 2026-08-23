@@ -185,6 +185,63 @@ class TestFormat:
 
 
 # --------------------------------------------------------------------------
+# saving without a passphrase
+# --------------------------------------------------------------------------
+
+class TestNoPassphraseMode:
+    def test_round_trip_without_prompting(self, fake_dpapi):
+        payload = make_signature().to_json_bytes()
+        raw = vault.encrypt(payload, None)
+
+        assert vault.needs_passphrase(raw) is False
+        assert vault.decrypt(raw) == payload
+
+    def test_header_marks_the_file(self, fake_dpapi):
+        raw = vault.encrypt(b'{"strokes": []}', None)
+
+        assert _header(raw)["auth"] == "none"
+
+    def test_passphrase_files_still_require_one(self, fake_dpapi):
+        raw = vault.encrypt(b'{"strokes": []}', PASSPHRASE)
+
+        assert vault.needs_passphrase(raw) is True
+        assert "auth" not in _header(raw)
+        with pytest.raises(vault.BadPassphrase):
+            vault.decrypt(raw)  # refuses rather than silently trying
+
+    def test_empty_string_is_rejected_as_ambiguous(self, fake_dpapi):
+        """'' must not silently mean 'no passphrase' -- that would be a footgun."""
+        with pytest.raises(ValueError):
+            vault.encrypt(b'{"strokes": []}', "")
+
+    @needs_windows
+    def test_still_encrypted_on_disk(self):
+        """No passphrase must not mean no encryption: the payload stays hidden.
+
+        Uses real DPAPI -- FakeDPAPI models only the account binding and keeps
+        the plaintext, so it cannot answer a confidentiality question.
+        """
+        sig = make_signature()
+        raw = vault.encrypt(sig.to_json_bytes(), None)
+
+        assert b"strokes" not in raw
+        assert b"22.5" not in raw
+
+    def test_still_bound_to_the_creating_account(self, fake_dpapi):
+        """The DPAPI factor is the *only* one left, so it must still apply."""
+        fake_dpapi.account = "PC-A\\user"
+        raw = vault.encrypt(make_signature().to_json_bytes(), None)
+
+        fake_dpapi.account = "PC-B\\user"
+
+        with pytest.raises(vault.BadPassphrase):
+            vault.decrypt(raw)
+
+    def test_needs_passphrase_is_false_for_non_sigx2(self):
+        assert vault.needs_passphrase(b'{"strokes": []}') is False
+
+
+# --------------------------------------------------------------------------
 # the reported bug: move the file to a second PC
 # --------------------------------------------------------------------------
 

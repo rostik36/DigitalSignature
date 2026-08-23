@@ -254,8 +254,12 @@ class App(tk.Tk):
             if not saved:
                 self._set_status("Save cancelled.")
                 return
-            kind = "encrypted" if path.lower().endswith(".sigx") else "plain (not encrypted)"
-            self._set_status(f"Saved {os.path.basename(path)} — {kind}.")
+            # The chosen mode may have changed the extension, so report what
+            # was actually written rather than what was typed.
+            self._set_status(
+                f"Saved {os.path.basename(saved['path'])} — "
+                f"{fileio.MODE_LABELS[saved['mode']]}."
+            )
 
     # --------------------------------------------------------------- signing
     def _sign_new(self) -> None:

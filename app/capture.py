@@ -283,8 +283,13 @@ class CaptureWindow(tk.Toplevel):
                 return
             if not saved:
                 return
-            kind = "encrypted" if path.lower().endswith(".sigx") else "plain (not encrypted)"
-            messagebox.showinfo("Saved", f"Saved ({kind}):\n{path}", parent=self)
+            # The chosen mode may have changed the extension, so report what
+            # was actually written rather than what was typed.
+            messagebox.showinfo(
+                "Saved",
+                f"Saved ({fileio.MODE_LABELS[saved['mode']]}):\n{saved['path']}",
+                parent=self,
+            )
 
     def _use(self) -> None:
         sig = self._build_signature()

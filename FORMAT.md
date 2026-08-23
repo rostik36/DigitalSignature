@@ -117,10 +117,17 @@ The current default. Byte layout:
   | `kdf` | Key-derivation function (`"pbkdf2-sha256"`). |
   | `salt` | base64 random 16-byte salt for the KDF. |
   | `iters` | PBKDF2 iteration count (default `200000`). |
+  | `auth` | *Optional.* `"none"` marks a file saved **without a passphrase**; absent means a passphrase is required. |
   | `hello` | *Optional.* Present only if Windows Hello unlock was enabled (see below). |
 
   If present, `hello` is `{ "key": <credential name>, "challenge": <base64 32
   bytes>, "sealed": <base64> }`.
+
+  When `auth` is `"none"`, the KDF input is the fixed public string
+  `DigitalSignature/v2/no-passphrase` instead of a user secret. This is **not** a
+  hidden password — it is in the source — so such a file is protected by DPAPI
+  alone, matching the legacy `SIGX1` guarantee. Readers must check this field
+  and skip the passphrase prompt (`vault.needs_passphrase`).
 
 - **Body** — Windows `CryptProtectData` output over the UTF-8 JSON payload, using
   extra entropy = `PBKDF2(passphrase, salt, iters)`. Opaque Microsoft structure
