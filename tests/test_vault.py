@@ -166,22 +166,38 @@ class TestSameMachine:
 
 class TestFormat:
     def test_classify(self):
+        assert vault.classify(b"SIGX3\n{}\nbody") == "sigx3"
         assert vault.classify(b"SIGX2\n{}\nbody") == "sigx2"
         assert vault.classify(b"SIGX1\nbody") == "sigx1"
         assert vault.classify(b'{"strokes": []}') == "plain"
 
-    def test_header_is_cleartext_json_without_secrets(self, fake_dpapi):
+    def test_header_is_cleartext_json_without_secrets(self):
         raw = vault.encrypt(make_signature().to_json_bytes(), PASSPHRASE)
         header = _header(raw)
 
-        assert header["v"] == 2
-        assert set(header) == {"v", "kdf", "salt", "iters"}
+        assert header["v"] == 3
+        assert set(header) == {"v", "kdf", "salt", "iters", "cipher"}
         assert PASSPHRASE not in json.dumps(header)
 
-    def test_no_hello_section_unless_requested(self, fake_dpapi):
+    def test_no_hello_section_unless_requested(self):
         raw = vault.encrypt(make_signature().to_json_bytes(), PASSPHRASE)
 
         assert not vault.header_has_hello(raw)
+
+    def test_header_is_authenticated(self):
+        """Editing the header must break the tag, not silently change behaviour."""
+        raw = vault.encrypt(make_signature().to_json_bytes(), PASSPHRASE)
+        tampered = raw.replace(b'"cipher":"aes-256-gcm"', b'"cipher":"aes-256-gcM"')
+        assert tampered != raw
+
+        with pytest.raises(vault.BadPassphrase):
+            vault.decrypt_with_passphrase(tampered, PASSPHRASE)
+
+    def test_truncated_file_is_rejected(self):
+        raw = vault.encrypt(make_signature().to_json_bytes(), PASSPHRASE)
+
+        with pytest.raises(vault.BadPassphrase):
+            vault.decrypt_with_passphrase(raw[:-1], PASSPHRASE)
 
 
 # --------------------------------------------------------------------------
@@ -191,17 +207,17 @@ class TestFormat:
 class TestNoPassphraseMode:
     def test_round_trip_without_prompting(self, fake_dpapi):
         payload = make_signature().to_json_bytes()
-        raw = vault.encrypt(payload, None)
+        raw = vault.encrypt(payload, None, tie_to_machine=True)
 
         assert vault.needs_passphrase(raw) is False
         assert vault.decrypt(raw) == payload
 
     def test_header_marks_the_file(self, fake_dpapi):
-        raw = vault.encrypt(b'{"strokes": []}', None)
+        raw = vault.encrypt(b'{"strokes": []}', None, tie_to_machine=True)
 
         assert _header(raw)["auth"] == "none"
 
-    def test_passphrase_files_still_require_one(self, fake_dpapi):
+    def test_passphrase_files_still_require_one(self):
         raw = vault.encrypt(b'{"strokes": []}', PASSPHRASE)
 
         assert vault.needs_passphrase(raw) is True
@@ -209,20 +225,21 @@ class TestNoPassphraseMode:
         with pytest.raises(vault.BadPassphrase):
             vault.decrypt(raw)  # refuses rather than silently trying
 
-    def test_empty_string_is_rejected_as_ambiguous(self, fake_dpapi):
+    def test_empty_string_is_rejected_as_ambiguous(self):
         """'' must not silently mean 'no passphrase' -- that would be a footgun."""
         with pytest.raises(ValueError):
             vault.encrypt(b'{"strokes": []}', "")
 
+    def test_refuses_to_write_an_unprotected_container(self):
+        """No passphrase AND no machine binding would protect nothing at all."""
+        with pytest.raises(ValueError, match="no protection at all"):
+            vault.encrypt(b'{"strokes": []}', None, tie_to_machine=False)
+
     @needs_windows
     def test_still_encrypted_on_disk(self):
-        """No passphrase must not mean no encryption: the payload stays hidden.
-
-        Uses real DPAPI -- FakeDPAPI models only the account binding and keeps
-        the plaintext, so it cannot answer a confidentiality question.
-        """
+        """No passphrase must not mean no encryption: the payload stays hidden."""
         sig = make_signature()
-        raw = vault.encrypt(sig.to_json_bytes(), None)
+        raw = vault.encrypt(sig.to_json_bytes(), None, tie_to_machine=True)
 
         assert b"strokes" not in raw
         assert b"22.5" not in raw
@@ -230,70 +247,121 @@ class TestNoPassphraseMode:
     def test_still_bound_to_the_creating_account(self, fake_dpapi):
         """The DPAPI factor is the *only* one left, so it must still apply."""
         fake_dpapi.account = "PC-A\\user"
-        raw = vault.encrypt(make_signature().to_json_bytes(), None)
+        raw = vault.encrypt(make_signature().to_json_bytes(), None, tie_to_machine=True)
 
         fake_dpapi.account = "PC-B\\user"
 
         with pytest.raises(vault.BadPassphrase):
             vault.decrypt(raw)
 
-    def test_needs_passphrase_is_false_for_non_sigx2(self):
+    def test_needs_passphrase_is_false_for_plain_files(self):
         assert vault.needs_passphrase(b'{"strokes": []}') is False
 
 
 # --------------------------------------------------------------------------
-# the reported bug: move the file to a second PC
+# moving a file to a second PC
+#
+# The original complaint was that a file made on one PC would not open on
+# another. Files are now portable by default, and machine binding is opt-in;
+# these tests hold both halves of that contract in place.
 # --------------------------------------------------------------------------
 
 class TestPortability:
-    def test_same_pc_same_passphrase_opens(self, fake_dpapi):
-        """Baseline for the two tests below: nothing moved, so it opens."""
+    def test_default_save_is_not_machine_bound(self):
+        raw = vault.encrypt(make_signature().to_json_bytes(), PASSPHRASE)
+
+        assert vault.is_machine_bound(raw) is False
+        assert b"dpapi" not in raw.split(b"\n", 2)[1]
+
+    def test_default_file_opens_on_a_different_pc(self, fake_dpapi):
+        """The fix for the reported bug: correct passphrase, different machine, opens.
+
+        Moving the fake DPAPI 'account' models carrying the file to another PC.
+        A portable file never touches DPAPI, so the move is irrelevant to it.
+        """
         payload = make_signature().to_json_bytes()
+        fake_dpapi.account = "PC-A\\user"
         raw = vault.encrypt(payload, PASSPHRASE)
+
+        fake_dpapi.account = "PC-B\\user"  # same person, different machine
 
         assert vault.decrypt_with_passphrase(raw, PASSPHRASE) == payload
 
-    def test_correct_passphrase_fails_on_a_different_pc(self, fake_dpapi):
-        """A .sigx written on PC A does NOT open on PC B, passphrase notwithstanding.
-
-        This reproduces the reported symptom. The passphrase is correct and the
-        file is byte-identical; the DPAPI layer underneath is what refuses,
-        because the blob is bound to the Windows account that created it.
-        """
-        fake_dpapi.account = "PC-A\\user"
+    def test_portable_file_still_needs_the_right_passphrase(self, fake_dpapi):
+        """Portable must not mean unprotected."""
         raw = vault.encrypt(make_signature().to_json_bytes(), PASSPHRASE)
 
-        fake_dpapi.account = "PC-B\\user"  # same person, different machine
+        fake_dpapi.account = "PC-B\\user"
+
+        with pytest.raises(vault.BadPassphrase):
+            vault.decrypt_with_passphrase(raw, "not the passphrase")
+
+    def test_opting_in_ties_the_file_to_this_pc(self, fake_dpapi):
+        """The checkbox has to actually do something."""
+        fake_dpapi.account = "PC-A\\user"
+        raw = vault.encrypt(make_signature().to_json_bytes(), PASSPHRASE,
+                            tie_to_machine=True)
+
+        assert vault.is_machine_bound(raw) is True
+        fake_dpapi.account = "PC-B\\user"
 
         with pytest.raises(vault.BadPassphrase):
             vault.decrypt_with_passphrase(raw, PASSPHRASE)
 
-    def test_also_fails_for_a_different_account_on_the_same_pc(self, fake_dpapi):
+    def test_tied_file_also_refuses_another_account_on_the_same_pc(self, fake_dpapi):
         fake_dpapi.account = "PC-A\\alice"
-        raw = vault.encrypt(make_signature().to_json_bytes(), PASSPHRASE)
+        raw = vault.encrypt(make_signature().to_json_bytes(), PASSPHRASE,
+                            tie_to_machine=True)
 
         fake_dpapi.account = "PC-A\\bob"
 
         with pytest.raises(vault.BadPassphrase):
             vault.decrypt_with_passphrase(raw, PASSPHRASE)
 
-    def test_passphrase_alone_does_not_determine_the_key(self, fake_dpapi):
-        """Shows the design intent: passphrase is necessary but not sufficient."""
-        fake_dpapi.account = "PC-A\\user"
-        from_a = vault.encrypt(b'{"strokes": []}', PASSPHRASE)
+    def test_hello_requires_machine_binding(self):
+        """Hello keys are machine-bound, so the combination must be rejected."""
+        with pytest.raises(ValueError, match="tie_to_machine"):
+            vault.encrypt(b'{"strokes": []}', PASSPHRASE, enable_hello=True)
 
-        fake_dpapi.account = "PC-B\\user"
-        from_b = vault.encrypt(b'{"strokes": []}', PASSPHRASE)
 
-        # Same passphrase, same payload, but the bodies are not interchangeable.
-        header_a, body_a = _split(from_a)
-        header_b, body_b = _split(from_b)
-        with pytest.raises(OSError):
-            secure.unprotect(body_a, entropy=secure.derive_key(
-                PASSPHRASE, _b64d(header_a["salt"]), header_a["iters"]))
-        # ...while the file made on this PC opens fine.
-        assert secure.unprotect(body_b, entropy=secure.derive_key(
-            PASSPHRASE, _b64d(header_b["salt"]), header_b["iters"])) == b'{"strokes": []}'
+class TestLegacyFiles:
+    """Old SIGX2 files were always DPAPI-wrapped; they must still open."""
+
+    def test_v2_is_reported_as_machine_bound(self, fake_dpapi):
+        v2 = _make_v2(b'{"strokes": []}', PASSPHRASE)
+
+        assert vault.classify(v2) == "sigx2"
+        assert vault.is_machine_bound(v2) is True
+        assert vault.needs_passphrase(v2) is True
+
+    def test_v2_round_trip(self, fake_dpapi):
+        payload = b'{"strokes": [[[1.0, 2.0, 0.0, 1.0]]]}'
+        v2 = _make_v2(payload, PASSPHRASE)
+
+        assert vault.decrypt_with_passphrase(v2, PASSPHRASE) == payload
+
+    def test_v2_wrong_passphrase(self, fake_dpapi):
+        v2 = _make_v2(b'{"strokes": []}', PASSPHRASE)
+
+        with pytest.raises(vault.BadPassphrase):
+            vault.decrypt_with_passphrase(v2, "wrong")
+
+
+def _make_v2(payload: bytes, passphrase: str) -> bytes:
+    """Build a legacy SIGX2 file the way the old encrypt() did."""
+    import base64 as _b64mod
+    import os as _os
+
+    salt = _os.urandom(16)
+    iters = secure.PBKDF2_ITERATIONS
+    file_key = secure.derive_key(passphrase, salt, iters)
+    body = secure.protect(payload, entropy=file_key)
+    header = json.dumps(
+        {"v": 2, "kdf": "pbkdf2-sha256",
+         "salt": _b64mod.b64encode(salt).decode("ascii"), "iters": iters},
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return vault.MAGIC_V2 + header + b"\n" + body
 
 
 # --------------------------------------------------------------------------
@@ -301,15 +369,11 @@ class TestPortability:
 # --------------------------------------------------------------------------
 
 def _split(raw: bytes):
-    rest = raw[len(vault.MAGIC_V2):]
+    magic = vault.MAGIC_V3 if raw.startswith(vault.MAGIC_V3) else vault.MAGIC_V2
+    rest = raw[len(magic):]
     nl = rest.index(b"\n")
     return json.loads(rest[:nl].decode("utf-8")), rest[nl + 1:]
 
 
 def _header(raw: bytes) -> dict:
     return _split(raw)[0]
-
-
-def _b64d(text: str) -> bytes:
-    import base64
-    return base64.b64decode(text.encode("ascii"))

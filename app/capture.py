@@ -28,6 +28,7 @@ from typing import List, Optional, Tuple
 
 from . import fileio
 from .model import Point, Signature
+from .ui import center_on_parent
 from .winutil import clear_timer_resolution, cursor_pos, set_timer_resolution
 
 CANVAS_WIDTH = 900
@@ -142,15 +143,7 @@ class CaptureWindow(tk.Toplevel):
 
     def _center_on_parent(self, master: tk.Misc) -> None:
         try:
-            px = master.winfo_rootx()
-            py = master.winfo_rooty()
-            pw = master.winfo_width()
-            ph = master.winfo_height()
-            w = self.winfo_width()
-            h = self.winfo_height()
-            x = px + (pw - w) // 2
-            y = py + (ph - h) // 2
-            self.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+            center_on_parent(self, master)
         except Exception:
             pass
 
@@ -287,7 +280,7 @@ class CaptureWindow(tk.Toplevel):
             # was actually written rather than what was typed.
             messagebox.showinfo(
                 "Saved",
-                f"Saved ({fileio.MODE_LABELS[saved['mode']]}):\n{saved['path']}",
+                f"Saved ({fileio.describe(saved['mode'], saved['tied'])}):\n{saved['path']}",
                 parent=self,
             )
 

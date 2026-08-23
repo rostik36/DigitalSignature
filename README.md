@@ -23,8 +23,12 @@ operating-system mouse drag (press → many moves → release), which those fiel
 
 - Windows (built and tested on Windows 11)
 - Python 3.9+
-- `pynput` (`pip install -r requirements.txt`). The GUI uses `tkinter`, which is
-  bundled with Python on Windows.
+- `pynput` and `cryptography` (`pip install -r requirements.txt`). The GUI uses
+  `tkinter`, which is bundled with Python on Windows.
+
+Only one copy runs at a time. A second launch shows a notice and exits, because
+two instances would both install global Esc hotkeys and both could drive the
+mouse — a replay from one would fight the other.
 
 ## Run
 
@@ -61,8 +65,10 @@ pytest
 
 [`tests/test_vault.py`](tests/test_vault.py) covers the passphrase save/load
 round trip, wrong-passphrase rejection, non-ASCII passphrases, per-save salt
-freshness, and the cross-machine behaviour described under **Storage** below.
-The DPAPI-backed tests are skipped automatically off Windows.
+freshness, header tamper detection, the no-passphrase mode, legacy `SIGX2`
+files, and both halves of the portability contract — that a default save opens
+on another machine, and that ticking "tie to this computer" stops it from
+doing so. The DPAPI-backed tests are skipped automatically off Windows.
 
 ## How to use
 
@@ -108,37 +114,44 @@ sets the real file extension, so you don't have to know the formats in advance:
 
 | Choice | What you get | Opens on another PC? |
 |--------|--------------|----------------------|
-| **Passphrase** *(strongest)* | `.sigx` — needs the passphrase **and** your Windows account | No |
-| **No passphrase** *(this PC only)* | `.sigx` — encrypted, opens with no prompt | No |
-| **No protection** *(portable)* | `.sig.json` — plain, readable JSON | Yes |
+| **Passphrase** *(default)* | `.sigx` — AES-256-GCM keyed from your passphrase | **Yes**, with the passphrase |
+| **Passphrase** + *tie to this computer* | `.sigx` — the above, also wrapped with your Windows account | No |
+| **No passphrase** | `.sigx` — encrypted, opens with no prompt | No |
+| **No protection** | `.sig.json` — plain, readable JSON | Yes, to anyone |
 
-"No passphrase" still encrypts the file and still ties it to your Windows
-account, so a stolen copy is useless — but anyone using your *unlocked* session
-can open it. "No protection" is the only portable option, and it stores your
-signature in the clear: anyone with that file can replay your real signature.
-Use it to move a signature between machines, then re-save with a passphrase and
-delete the plain copy.
+**Files are portable by default.** The passphrase alone is the key, so a `.sigx`
+you save today opens on any computer that runs this app and knows the
+passphrase. Nothing about your PC is mixed in.
+
+Tick **"Also tie this file to this computer"** if you'd rather it *couldn't*
+leave: that adds your Windows account (DPAPI) as a second required factor, so
+the file will not open on another PC or another user account even with the right
+passphrase. It's a deliberate trade — stronger at rest, useless on a second
+machine.
+
+"No passphrase" leaves the Windows account as the only lock, so it's always
+tied to this computer. "No protection" stores your signature in the clear:
+anyone with that file can replay your real signature.
 
 The two on-disk formats in detail:
 
-- **`*.sigx` — encrypted (recommended, the default).** Protected by **two
-  independent factors**: your **Windows account** (DPAPI) **and** a **passphrase**
-  you set (PBKDF2-HMAC-SHA256, 200k iterations) — or by the Windows account alone
-  if you chose "No passphrase". Both are required to open it, so
-  even someone on your *already-unlocked* Windows session can't read it without
-  the passphrase. Optionally, **Windows Hello** (face/fingerprint) can be enabled
-  as a convenient unlock — then the file opens with the passphrase **or** a live
-  biometric (the passphrase stays as the master/fallback). Copy the file to
-  another account/PC and it's unreadable noise; nothing touches the network.
+- **`*.sigx` — encrypted (recommended, the default).** The payload is encrypted
+  with **AES-256-GCM** under a key stretched from your passphrase with
+  **PBKDF2-HMAC-SHA256 (200k iterations)**. GCM authenticates the file, so a
+  wrong passphrase and a tampered file are both caught rather than producing
+  garbage. Nothing about your computer is part of the key, so the file travels.
 
-  > **`.sigx` files are deliberately not portable.** Because the DPAPI factor is
-  > bound to the Windows account that created the file, a `.sigx` **cannot be
-  > moved to another PC** (or another user on the same PC) — the correct
-  > passphrase will still fail to open it, reported as a wrong passphrase. This
-  > is the format working as designed, not a bug. To use the same signature on a
-  > second machine, either re-capture it there, or transfer it as `.sig.json`
-  > (**unencrypted — treat that file as sensitive**) and re-save it as `.sigx`
-  > on the new PC.
+  Two optional extras, both off unless you ask for them:
+
+  - **Tie to this computer** — additionally wraps the ciphertext with Windows
+    **DPAPI**, adding your Windows account as a second required factor. Now even
+    someone on your *already-unlocked* session needs the passphrase, and the file
+    is unreadable noise on any other PC or account.
+  - **Windows Hello** (face/fingerprint) as a convenient unlock, so the file
+    opens with the passphrase **or** a live biometric. Hello keys live on one
+    machine, so this implies "tie to this computer".
+
+  Nothing touches the network in any mode.
 - **`*.sig.json` — plain JSON (not encrypted).** Human-readable. Written when you
   pick "No protection", and useful for moving a signature to another PC or for
   interop with anything that writes the same `[x, y, t, p]` shape. **Treat it as
@@ -157,18 +170,21 @@ expires, which would make old files undecryptable.
 
 | File | Role |
 |------|------|
-| `run.py` | Entry point; sets DPI awareness, launches the app |
+| `run.py` | Thin wrapper; real startup lives in `app/__main__.py` |
+| `app/__main__.py` | Entry point: DPI awareness, single-instance lock, launch |
+| `app/single_instance.py` | Named-mutex lock so only one copy runs |
 | `app/model.py` | Signature data, JSON save/load, map-to-box math |
 | `app/capture.py` | Canvas window for drawing & recording |
 | `app/overlay.py` | Fullscreen drag-select of the target rectangle |
 | `app/replay.py` | Engine that performs the mouse drag |
 | `app/winput.py` | Windows `SendInput` mouse backend (ordered drag stream) |
-| `app/secure.py` | DPAPI primitives + PBKDF2 key derivation |
-| `app/vault.py` | `SIGX2` container: passphrase (+ optional Hello) |
+| `app/secure.py` | AES-256-GCM + PBKDF2, and the DPAPI primitives |
+| `app/vault.py` | `SIGX3` container: portable by default, optional PC binding |
 | `app/hello.py` | Windows Hello unlock via `KeyCredentialManager` |
-| `app/fileio.py` | Passphrase/Hello dialogs + save/load routing |
+| `app/fileio.py` | Save-protection dialog, unlock prompts, save/load routing |
 | `app/app.py` | Control window wiring it all together |
 | `app/winutil.py` | DPI awareness + virtual-screen geometry |
+| `app/ui.py` | Centering helpers so dialogs open in the middle of the screen |
 
 ## Troubleshooting
 

@@ -1,10 +1,10 @@
-"""Interactive save/load with passphrase + optional Windows Hello prompts.
+"""Interactive save/load: protection choice, passphrase and Hello prompts.
 
 Shared by the main window and the capture window. Keeps all the dialog and
 format-routing logic in one place:
 
-- ``.sigx``  -> passphrase-encrypted (SIGX2), optionally Hello-unlockable.
-- ``.sigx1`` legacy / plain ``.json`` -> handled by ``Signature.load`` directly.
+- ``.sigx``  -> encrypted (SIGX3), portable unless the user ties it to this PC.
+- ``.sig.json`` / legacy ``.sigx1`` -> handled by ``Signature.load`` directly.
 """
 
 from __future__ import annotations
@@ -15,12 +15,13 @@ from typing import Optional
 
 from . import hello, vault
 from .model import Signature
+from .ui import center_on_screen
 
 
 #: Protection modes offered when saving. Values are stored in the result dict.
-MODE_PASSPHRASE = "passphrase"   # SIGX2, passphrase + Windows account
-MODE_NO_PASSPHRASE = "nopass"    # SIGX2, Windows account only, no prompt
-MODE_PLAIN = "plain"             # unencrypted JSON, portable
+MODE_PASSPHRASE = "passphrase"   # SIGX3, AES-GCM from the passphrase
+MODE_NO_PASSPHRASE = "nopass"    # SIGX3, Windows account only, no prompt
+MODE_PLAIN = "plain"             # unencrypted JSON
 
 
 class PassphraseDialog(tk.Toplevel):
@@ -52,6 +53,7 @@ class PassphraseDialog(tk.Toplevel):
         self.bind("<Return>", lambda _e: self._ok())
         self.bind("<Escape>", lambda _e: self._cancel())
         self._entry.focus_set()
+        center_on_screen(self)
 
     def _build(self) -> None:
         title = "Set a passphrase to encrypt this signature" if self.mode == "set" \
@@ -140,7 +142,8 @@ class SaveOptionsDialog(tk.Toplevel):
 
     Result (``self.result``) is ``None`` if cancelled, otherwise::
 
-        {"mode": MODE_PASSPHRASE, "passphrase": str, "enable_hello": bool}
+        {"mode": MODE_PASSPHRASE, "passphrase": str,
+         "tie_to_machine": bool, "enable_hello": bool}
         {"mode": MODE_NO_PASSPHRASE}
         {"mode": MODE_PLAIN}
     """
@@ -161,11 +164,15 @@ class SaveOptionsDialog(tk.Toplevel):
         self._pp = tk.StringVar()
         self._pp2 = tk.StringVar()
         self._show = tk.BooleanVar(value=False)
-        self._enable_hello = tk.BooleanVar(value=hello_available)
+        # Off by default: files should open on any PC unless the user asks
+        # otherwise. Turning it on costs portability, so it is never implicit.
+        self._tie = tk.BooleanVar(value=False)
+        self._enable_hello = tk.BooleanVar(value=False)
         self._build()
         self._sync_enabled()
         self.bind("<Escape>", lambda _e: self._cancel())
         self._entry.focus_set()
+        center_on_screen(self)
 
     # -- layout ---------------------------------------------------------
     def _option(self, parent: tk.Misc, mode: str, title: str, badge: str,
@@ -213,26 +220,43 @@ class SaveOptionsDialog(tk.Toplevel):
                                        font=("Segoe UI", 8))
         self._show_cb.pack(anchor="w", padx=(24, 0))
 
-        self._hello_cb = tk.Checkbutton(
-            wrap, text="Also allow Windows Hello (face/fingerprint) unlock",
-            variable=self._enable_hello, bg="#f4f6f9", activebackground="#f4f6f9",
-            fg="#52606d", font=("Segoe UI", 8))
-        if self.hello_available:
-            self._hello_cb.pack(anchor="w", padx=(24, 0))
-
         tk.Frame(self, bg="#dde3ec", height=1).pack(fill="x", padx=16, pady=(10, 0))
 
         # 2. no passphrase, DPAPI only
         self._option(wrap, MODE_NO_PASSPHRASE, "No passphrase", "this PC only", "#b7791f",
-                     "Saves immediately with no prompt. Still encrypted and unreadable "
-                     "on another PC or account — but anyone using your unlocked "
-                     "Windows session can open it.")
+                     "Saves immediately with no prompt. Protected by this Windows "
+                     "account alone, so it always stays on this computer and anyone "
+                     "using your unlocked session can open it.")
 
         # 3. plain
-        self._option(wrap, MODE_PLAIN, "No protection", "portable", "#c53030",
+        self._option(wrap, MODE_PLAIN, "No protection", "readable by anyone", "#c53030",
                      "⚠ Saved as readable JSON. Anyone who gets this file can replay "
-                     "your signature. Use it to move a signature to another PC, then "
-                     "re-save it there with a passphrase and delete the copy.")
+                     "your signature.")
+
+        tk.Frame(self, bg="#dde3ec", height=1).pack(fill="x", padx=16, pady=(12, 0))
+
+        extra = tk.Frame(self, bg="#f4f6f9")
+        extra.pack(fill="x", padx=16, pady=(8, 0))
+        self._tie_cb = tk.Checkbutton(
+            extra, text="Also tie this file to this computer", variable=self._tie,
+            command=self._sync_enabled, bg="#f4f6f9", activebackground="#f4f6f9",
+            fg="#1f2d3d", font=("Segoe UI", 9, "bold"))
+        self._tie_cb.pack(anchor="w")
+        self._tie_note = tk.Label(
+            extra,
+            text="Off: the file opens on any computer with the passphrase.\n"
+                 "On: adds your Windows account as a second lock — it will NOT open "
+                 "on another PC, even with the correct passphrase.",
+            bg="#f4f6f9", fg="#7b8794", font=("Segoe UI", 8),
+            wraplength=380, justify="left")
+        self._tie_note.pack(anchor="w", padx=(24, 0))
+
+        self._hello_cb = tk.Checkbutton(
+            extra, text="Allow Windows Hello (face/fingerprint) unlock",
+            variable=self._enable_hello, bg="#f4f6f9", activebackground="#f4f6f9",
+            fg="#52606d", font=("Segoe UI", 8))
+        if self.hello_available:
+            self._hello_cb.pack(anchor="w", padx=(24, 0), pady=(4, 0))
 
         bar = tk.Frame(self, bg="#f4f6f9")
         bar.pack(fill="x", padx=14, pady=12)
@@ -243,11 +267,34 @@ class SaveOptionsDialog(tk.Toplevel):
 
     # -- behaviour ------------------------------------------------------
     def _sync_enabled(self) -> None:
-        """Grey out the passphrase fields unless that mode is selected."""
-        on = self._mode.get() == MODE_PASSPHRASE
-        state = "normal" if on else "disabled"
-        for w in (self._entry, self._entry2, self._show_cb, self._hello_cb):
-            w.config(state=state)
+        """Keep the passphrase fields and the two extra options consistent."""
+        mode = self._mode.get()
+
+        pp_state = "normal" if mode == MODE_PASSPHRASE else "disabled"
+        for w in (self._entry, self._entry2, self._show_cb):
+            w.config(state=pp_state)
+
+        if mode == MODE_NO_PASSPHRASE:
+            # Without a passphrase the Windows account is the only lock there
+            # is, so machine binding is mandatory rather than optional.
+            self._tie.set(True)
+            self._tie_cb.config(state="disabled")
+        elif mode == MODE_PLAIN:
+            self._tie.set(False)
+            self._tie_cb.config(state="disabled")
+        else:
+            self._tie_cb.config(state="normal")
+
+        # Hello keys live on this machine, so the option only exists once the
+        # file is machine-bound anyway.
+        if self.hello_available:
+            if self._tie.get() and mode != MODE_PLAIN:
+                self._hello_cb.config(state="normal")
+            else:
+                self._enable_hello.set(False)
+                self._hello_cb.config(state="disabled")
+
+        self._tie_note.config(fg="#7b8794" if mode == MODE_PASSPHRASE else "#a9b4c0")
 
     def _toggle_show(self) -> None:
         ch = "" if self._show.get() else "•"
@@ -265,6 +312,7 @@ class SaveOptionsDialog(tk.Toplevel):
                 messagebox.showinfo("Passphrase", "The two passphrases don't match.", parent=self)
                 return
             self.result = {"mode": mode, "passphrase": pp,
+                           "tie_to_machine": bool(self._tie.get()),
                            "enable_hello": bool(self._enable_hello.get())}
         elif mode == MODE_PLAIN:
             if not messagebox.askyesno(
@@ -304,6 +352,17 @@ MODE_LABELS = {
 }
 
 
+def describe(mode: str, tied: bool) -> str:
+    """Status-bar text that makes portability explicit, since that is the thing
+    most likely to surprise someone later."""
+    label = MODE_LABELS[mode]
+    if mode == MODE_PLAIN:
+        return label + ", opens anywhere"
+    if mode == MODE_NO_PASSPHRASE:
+        return label
+    return label + (", this PC only" if tied else ", opens on any PC")
+
+
 def save_signature(parent: tk.Misc, sig: Signature, path: str) -> Optional[dict]:
     """Save ``sig``, asking how it should be protected.
 
@@ -321,16 +380,19 @@ def save_signature(parent: tk.Misc, sig: Signature, path: str) -> Optional[dict]
     if mode == MODE_PLAIN:
         path = _retarget(path, encrypted=False)
         sig.save(path)
-        return {"path": path, "mode": mode}
+        return {"path": path, "mode": mode, "tied": False}
 
     path = _retarget(path, encrypted=True)
     if mode == MODE_NO_PASSPHRASE:
-        raw = vault.encrypt(sig.to_json_bytes(), None)
+        # No passphrase only makes sense with the machine as the lock.
+        raw = vault.encrypt(sig.to_json_bytes(), None, tie_to_machine=True)
     else:
         pp = dlg.result["passphrase"]
+        tie = dlg.result.get("tie_to_machine", False)
         want_hello = dlg.result.get("enable_hello", False)
         try:
-            raw = vault.encrypt(sig.to_json_bytes(), pp, enable_hello=want_hello)
+            raw = vault.encrypt(sig.to_json_bytes(), pp, tie_to_machine=tie,
+                                enable_hello=want_hello)
         except hello.HelloError as exc:
             if not messagebox.askyesno(
                 "Windows Hello",
@@ -338,11 +400,12 @@ def save_signature(parent: tk.Misc, sig: Signature, path: str) -> Optional[dict]
                 parent=parent,
             ):
                 return None
-            raw = vault.encrypt(sig.to_json_bytes(), pp, enable_hello=False)
+            raw = vault.encrypt(sig.to_json_bytes(), pp, tie_to_machine=tie,
+                                enable_hello=False)
 
     with open(path, "wb") as fh:
         fh.write(raw)
-    return {"path": path, "mode": mode}
+    return {"path": path, "mode": mode, "tied": vault.is_machine_bound(raw)}
 
 
 def load_signature(parent: tk.Misc, path: str) -> Optional[Signature]:

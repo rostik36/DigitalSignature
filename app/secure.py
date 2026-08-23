@@ -18,6 +18,7 @@ stronger but heavier option -- see the project README.
 from __future__ import annotations
 
 import hashlib
+import os
 import sys
 
 # Mixed into every blob as secondary entropy. Changing this makes all previously
@@ -32,6 +33,48 @@ PBKDF2_ITERATIONS = 200_000
 def derive_key(passphrase: str, salt: bytes, iterations: int = PBKDF2_ITERATIONS) -> bytes:
     """Stretch a passphrase into a 32-byte key with PBKDF2-HMAC-SHA256."""
     return hashlib.pbkdf2_hmac("sha256", passphrase.encode("utf-8"), salt, iterations, dklen=32)
+
+
+# --------------------------------------------------------------------------
+# Portable authenticated encryption (AES-256-GCM)
+#
+# Unlike DPAPI below, this is pure cryptography with no OS or machine identity
+# involved: the key comes only from the passphrase, so a file encrypted this way
+# opens on any computer that has the passphrase. This is what makes the default
+# save format portable.
+# --------------------------------------------------------------------------
+
+NONCE_BYTES = 12  # 96-bit nonce, the size AES-GCM is specified for
+
+
+class DecryptionError(Exception):
+    """Ciphertext failed to authenticate: wrong key, or the file was altered."""
+
+
+def aead_encrypt(key: bytes, plaintext: bytes, associated_data: bytes = b"") -> bytes:
+    """Encrypt with AES-256-GCM. Returns ``nonce || ciphertext||tag``.
+
+    ``associated_data`` is authenticated but not encrypted -- we pass the file
+    header through it so a tampered header is detected on open.
+    """
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    nonce = os.urandom(NONCE_BYTES)
+    return nonce + AESGCM(key).encrypt(nonce, plaintext, associated_data)
+
+
+def aead_decrypt(key: bytes, blob: bytes, associated_data: bytes = b"") -> bytes:
+    """Reverse :func:`aead_encrypt`. Raises :class:`DecryptionError` on any failure."""
+    from cryptography.exceptions import InvalidTag
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    if len(blob) <= NONCE_BYTES:
+        raise DecryptionError("Ciphertext is truncated.")
+    nonce, body = blob[:NONCE_BYTES], blob[NONCE_BYTES:]
+    try:
+        return AESGCM(key).decrypt(nonce, body, associated_data)
+    except InvalidTag as exc:
+        raise DecryptionError("Wrong passphrase, or the file has been modified.") from exc
 
 _AVAILABLE = sys.platform.startswith("win")
 

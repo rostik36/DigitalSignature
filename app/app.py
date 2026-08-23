@@ -28,6 +28,7 @@ from .capture import CaptureWindow
 from .model import Box, Signature
 from .overlay import BoxSelector
 from .replay import Replayer, ReplayOptions
+from .ui import center_on_parent, center_on_screen
 
 PREVIEW_W = 420
 PREVIEW_H = 150
@@ -52,6 +53,9 @@ class App(tk.Tk):
         self._busy = False
 
         self._build_ui()
+        # Center the main window too: tkinter places message boxes over their
+        # parent, so a centered parent keeps every prompt near the middle.
+        center_on_screen(self)
         self._poll_events()
 
     # --------------------------------------------------------------- UI
@@ -258,7 +262,7 @@ class App(tk.Tk):
             # was actually written rather than what was typed.
             self._set_status(
                 f"Saved {os.path.basename(saved['path'])} — "
-                f"{fileio.MODE_LABELS[saved['mode']]}."
+                f"{fileio.describe(saved['mode'], saved['tied'])}."
             )
 
     # --------------------------------------------------------------- signing
@@ -316,10 +320,11 @@ class App(tk.Tk):
                 self._cd_win, bg="#1f2d3d", fg="white", font=("Segoe UI", 20, "bold"), padx=30, pady=18
             )
             self._cd_lbl.pack()
-            self._cd_win.update_idletasks()
-            sw = self._cd_win.winfo_screenwidth()
-            self._cd_win.geometry(f"+{sw // 2 - 130}+40")
+        # Re-center on every tick: the text width changes with the digit, and
+        # the countdown belongs in the middle of the screen where the user is
+        # looking, not tucked against the top edge.
         self._cd_lbl.config(text=f"Signing in {n}…  (Esc to cancel)")
+        center_on_screen(self._cd_win)
 
     def _hide_countdown(self) -> None:
         win = getattr(self, "_cd_win", None)
@@ -400,6 +405,7 @@ class SettingsDialog(tk.Toplevel):
         self._step_delay = tk.DoubleVar(value=opt.step_delay * 1000.0)
 
         self._build()
+        center_on_parent(self, app)
 
     def _label(self, grid: tk.Frame, row: int, text: str) -> None:
         tk.Label(

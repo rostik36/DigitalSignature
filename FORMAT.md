@@ -9,8 +9,9 @@ header:
 
 | Extension | Encrypted | Leading bytes | Purpose |
 |-----------|-----------|---------------|---------|
-| `*.sigx` | Yes — passphrase + Windows account (+ optional Hello) | `53 49 47 58 32 0A` (`SIGX2\n`) | **Default.** See §2. |
-| `*.sigx` (legacy) | Yes — Windows account only | `53 49 47 58 31 0A` (`SIGX1\n`) | Older files; DPAPI only, no passphrase. Still loads. |
+| `*.sigx` | Yes — AES-256-GCM from the passphrase (+ optional machine binding / Hello) | `53 49 47 58 33 0A` (`SIGX3\n`) | **Default.** Portable unless tied to a PC. See §2. |
+| `*.sigx` (legacy) | Yes — passphrase + Windows account | `53 49 47 58 32 0A` (`SIGX2\n`) | Older files; DPAPI-wrapped, always machine-bound. Still loads. |
+| `*.sigx` (legacy) | Yes — Windows account only | `53 49 47 58 31 0A` (`SIGX1\n`) | Oldest files; DPAPI only, no passphrase. Still loads. |
 | `*.sig.json` / `*.json` | No | `{` (raw JSON) | Interop / human-readable export. |
 
 Both wrap the **same inner JSON payload** — described first below — and the
@@ -94,20 +95,24 @@ which replay reproduces as a pause).
 
 ---
 
-## 2. The encrypted container (`*.sigx`, format SIGX2)
+## 2. The encrypted container (`*.sigx`, format SIGX3)
 
 The current default. Byte layout:
 
 ```
 +----------------+------------------------------+---+------------------------+
-| magic (6 bytes)| header: one-line JSON (utf-8)|\n | DPAPI body (binary)    |
-| 53 49 47 58 32 | {"v":2,"kdf":...}            |0A | CryptProtectData output|
-| 0A  "SIGX2\n"  |                              |   | over the JSON payload   |
+| magic (6 bytes)| header: one-line JSON (utf-8)|\n | body (binary)          |
+| 53 49 47 58 33 | {"v":3,"kdf":...}            |0A | nonce(12) || AES-GCM    |
+| 0A  "SIGX3\n"  |                              |   | ciphertext || tag(16)  |
 +----------------+------------------------------+---+------------------------+
 ```
 
-- **Magic** — `SIGX2\n`. `load` reads this to pick the path; plain JSON (`{`) and
-  legacy `SIGX1\n` are handled separately.
+If the file is tied to a computer (`"machine":"dpapi"`), that whole body is then
+wrapped once more with `CryptProtectData`, so the bytes on disk are a DPAPI blob
+containing the AES-GCM output.
+
+- **Magic** — `SIGX3\n`. `load` reads this to pick the path; plain JSON (`{`) and
+  legacy `SIGX2\n` / `SIGX1\n` are handled separately.
 - **Header** — a single line of cleartext JSON. It holds **no secrets**, only
   the public parameters needed to derive the key:
 
@@ -136,22 +141,32 @@ The current default. Byte layout:
 
 ### The layered key — what you need to decrypt
 
-The payload key combines two independent factors, so **both** are required:
+By default there is **exactly one** factor, and it travels with you:
 
-1. **Your Windows account** — DPAPI's own key, derived by Windows from your
-   logon. Decryptable only as the same user (by default, same machine).
-2. **Your passphrase** — stretched with PBKDF2-HMAC-SHA256 (200k iterations) and
-   passed as DPAPI secondary entropy. A wrong passphrase → wrong entropy →
-   `CryptUnprotectData` fails (that's how a wrong passphrase is detected). The
-   iteration count slows brute-force guessing on an unlocked session.
+1. **Your passphrase** — stretched with PBKDF2-HMAC-SHA256 (200k iterations)
+   over the header's random 16-byte `salt` to give a 32-byte AES key. The
+   iteration count slows brute-force guessing against a stolen file.
+
+The header line is passed to AES-GCM as **associated data**, so it is
+authenticated even though it is not encrypted: editing `salt`, `iters`, or
+`machine` invalidates the tag instead of silently changing how the file is read.
+A wrong passphrase fails the same way — the GCM tag simply doesn't verify.
+
+Because no machine identity is involved, **the file opens on any computer** that
+has the passphrase. That is the intended default.
+
+**If `"machine":"dpapi"` is present**, a second factor is added:
+
+2. **Your Windows account** — DPAPI's own key, derived by Windows from your
+   logon. The AES-GCM body is wrapped with `CryptProtectData` (secondary entropy
+   = the same passphrase-derived key). Now an attacker **already inside your
+   unlocked Windows session** still cannot open the file without the passphrase —
+   and the file is unreadable on any other PC or account, which is precisely the
+   trade being made.
 
 A fixed app constant `b"DigitalSignature/v1/dpapi-entropy"` is also prepended to
-the entropy (binds the blob to this app). Changing it breaks all existing files.
-
-This is the key point of the design: even an attacker **already inside your
-unlocked Windows session** (remote control, or you walked away) cannot open the
-file — DPAPI alone isn't enough; they'd also need the passphrase, which logging
-in does not provide.
+the DPAPI entropy (binds the blob to this app). Changing it breaks existing
+machine-bound files.
 
 ### Optional Windows Hello unlock (the `hello` header block)
 
@@ -174,26 +189,35 @@ requires Hello to be enrolled and the `winsdk` package.)
 
 ### What an attacker can and cannot learn
 
-Without your Windows logon **and** passphrase (or biometric), someone who copies
-a `*.sigx` file:
+Someone who copies a `*.sigx` file, without the passphrase:
 
 - **Cannot** read the strokes, timing or any geometry — the payload is
-  encrypted and tampering is detected by the MAC.
-- **Can** still infer, from the extension and `SIGX2` header, that it is a
+  encrypted and tampering is caught by the GCM tag.
+- **Can** still infer, from the extension and `SIGX3` header, that it is a
   signature file from this app, and estimate rough complexity from the **file
   size** (not padded). To hide even that, keep it inside an encrypted volume.
-- **Cannot** brute-force the passphrase off your machine at all (DPAPI needs
-  your user key); on your unlocked session, PBKDF2's cost slows each guess.
+- **Can** attempt an **offline brute-force of the passphrase** on a default
+  (portable) file. This is the honest cost of portability: everything needed to
+  test a guess travels in the file. PBKDF2 at 200k iterations makes each guess
+  expensive, but a weak passphrase is still the weak link — **choose a strong
+  one for files you intend to carry between machines.**
+- **Cannot** attack a file saved with **"tie to this computer"** off-machine at
+  all: DPAPI needs the creating user's key, so guesses can only be made from
+  inside that logged-in account.
 
-### Legacy SIGX1
+### Legacy SIGX2 and SIGX1
 
-Older `*.sigx` files use `SIGX1\n` + a single DPAPI blob with only the fixed app
-entropy (no passphrase). They still load. Re-save to upgrade them to SIGX2.
+`SIGX2\n` files wrap the payload directly in DPAPI with the passphrase as
+secondary entropy; `SIGX1\n` files use DPAPI with only the fixed app entropy and
+no passphrase. Both are **always machine-bound** and both still load. Re-saving
+one upgrades it to `SIGX3` — and, unless you tick "tie to this computer", makes
+it portable in the process.
 
 ---
 
 ## 3. Versioning
 
 - **Payload**: the `format` integer (currently `1`). New fields should bump this.
-- **Container**: the `SIGX1` magic (currently version `1`). A new container
-  layout would use `SIGX2\n`, and `load` would branch on the header.
+- **Container**: the magic line (currently `SIGX3\n`). `vault.classify()` branches
+  on it, so a new layout adds `SIGX4\n` and a matching branch while older readers
+  keep working.
