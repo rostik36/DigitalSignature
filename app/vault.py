@@ -82,13 +82,21 @@ def _unb64(text: str) -> bytes:
 
 
 def classify(raw: bytes) -> str:
-    """Return 'sigx3', 'sigx2', 'sigx1' or 'plain' for a file's leading bytes."""
+    """Return 'sigx3', 'sigx2', 'sigx1', 'sigx-unknown' or 'plain'.
+
+    ``sigx-unknown`` means the file is one of ours but from a **newer** build.
+    Detecting that explicitly matters: without it the binary body reaches the
+    plain-JSON reader and fails as an opaque ``UnicodeDecodeError`` instead of
+    telling the user to update.
+    """
     if raw.startswith(MAGIC_V3):
         return "sigx3"
     if raw.startswith(MAGIC_V2):
         return "sigx2"
     if raw.startswith(MAGIC_V1):
         return "sigx1"
+    if raw.startswith(b"SIGX"):
+        return "sigx-unknown"
     return "plain"
 
 

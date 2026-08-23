@@ -415,7 +415,16 @@ def load_signature(parent: tk.Misc, path: str) -> Optional[Signature]:
     with open(path, "rb") as fh:
         raw = fh.read()
 
-    if vault.classify(raw) != "sigx2":
+    kind = vault.classify(raw)
+    if kind == "sigx-unknown":
+        messagebox.showerror(
+            "Can't open signature",
+            "This file was saved by a newer version of the app.\n\n"
+            "Update this copy to open it.",
+            parent=parent,
+        )
+        return None
+    if kind not in ("sigx2", "sigx3"):
         return Signature.load(path)  # plain JSON or legacy SIGX1
 
     if not vault.needs_passphrase(raw):

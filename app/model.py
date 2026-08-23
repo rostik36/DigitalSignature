@@ -190,8 +190,16 @@ class Signature:
         """
         with open(path, "rb") as fh:
             raw = fh.read()
-        if raw.startswith(b"SIGX2\n"):
-            raise ValueError("This file is passphrase-encrypted; open it through the app.")
+        if raw.startswith(b"SIGX") and not raw.startswith(ENC_MAGIC):
+            # Any encrypted container other than legacy SIGX1. If this build
+            # doesn't know the version, say so plainly -- decoding the binary
+            # body as text otherwise dies with an opaque UnicodeDecodeError.
+            version = raw[:6].decode("ascii", "replace").strip()
+            raise ValueError(
+                f"This file is encrypted ({version}); open it through the app. "
+                "If the app reports the same error, it is older than the file — "
+                "update this copy of the app to the version that saved it."
+            )
         if raw.startswith(ENC_MAGIC):  # legacy SIGX1: DPAPI only
             from .secure import unprotect
 
