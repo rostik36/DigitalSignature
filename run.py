@@ -1,23 +1,13 @@
 """Entry point for the Signature Mouse Signer.
 
-Run with:  python run.py
+Run with:  python run.py   (equivalently:  python -m app)
 
-DPI awareness is set before any Tk window is created so that on-screen
-coordinates match the real cursor, which is what makes the replay land in the
-right place.
+The real startup sequence lives in :mod:`app.__main__` so that every way of
+launching the app -- this script, ``python -m app``, or running ``app/app.py``
+directly -- goes through the same path.
 """
 
-from app.winutil import set_dpi_awareness
-
-
-def main() -> None:
-    set_dpi_awareness()
-    # Import after DPI awareness is configured.
-    from app.app import App
-
-    app = App()
-    app.mainloop()
-
+from app.__main__ import main
 
 if __name__ == "__main__":
     main()

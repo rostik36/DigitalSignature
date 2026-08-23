@@ -28,9 +28,28 @@ operating-system mouse drag (press → many moves → release), which those fiel
 
 ## Run
 
+The launcher scripts create a `.venv`, install `requirements.txt` into it, and
+start the app. They can be run from any working directory, and re-runs reuse the
+existing environment (dependencies are reinstalled only when
+`requirements.txt` changes).
+
+```powershell
+.\run.ps1              # Windows / PowerShell
+```
+
+```bash
+./run.sh               # Linux, macOS, Git Bash / WSL
+```
+
+Both accept `--recreate` (rebuild the venv from scratch) and `--skip-install`
+(launch without touching dependencies); in PowerShell these are `-Recreate` and
+`-SkipInstall`.
+
+To manage the environment yourself instead:
+
 ```powershell
 pip install -r requirements.txt
-python run.py
+python run.py           # equivalently: python -m app
 ```
 
 ## How to use

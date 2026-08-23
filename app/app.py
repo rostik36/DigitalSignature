@@ -2,6 +2,18 @@
 
 from __future__ import annotations
 
+if __name__ == "__main__" and __package__ in (None, ""):
+    # Run as a plain script (e.g. the IDE's run button). The relative imports
+    # below need a parent package, and DPI awareness has to be configured
+    # before Tk loads, so hand off to the real entry point instead.
+    import pathlib
+    import sys
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+    from app.__main__ import main
+
+    raise SystemExit(main())
+
 import os
 import queue
 import threading

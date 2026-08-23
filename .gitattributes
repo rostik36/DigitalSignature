@@ -1,0 +1,10 @@
+# Normalize text files to LF in the repository.
+* text=auto eol=lf
+
+# Shell scripts must keep LF endings; CRLF breaks the shebang on Linux/macOS.
+*.sh text eol=lf
+
+# PowerShell and batch files are Windows-only and prefer CRLF.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
