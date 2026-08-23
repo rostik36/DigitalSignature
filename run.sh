@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Set up the environment and launch the Signature Mouse Signer.
+# Set up the environment and launch Digital Signature.
 #
 # Creates a .venv on first run, installs requirements.txt into it, then starts
 # the app. Re-runs reuse the existing venv and only reinstall when
@@ -100,7 +100,7 @@ if [[ $SKIP_INSTALL -eq 0 ]]; then
     fi
 fi
 
-ok "Starting Signature Mouse Signer"
+ok "Starting Digital Signature"
 
 # Anchor imports on the repo root so the script works from any working directory.
 # Git Bash hands Windows-native Python a POSIX path, so translate it there.

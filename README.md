@@ -1,4 +1,4 @@
-# Signature Mouse Signer
+# Digital Signature
 
 Capture your handwritten signature on a canvas (with a pen or the mouse), store
 it to a file, and have the application **re-draw it by moving the real mouse

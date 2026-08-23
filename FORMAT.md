@@ -1,8 +1,8 @@
 # Signature file format
 
-This document describes exactly what a saved signature file contains: the
-on-disk container, the inner data structure, field meanings and units, and what
-the encryption does and does not hide.
+This document describes exactly what a signature file saved by **Digital
+Signature** contains: the on-disk container, the inner data structure, field
+meanings and units, and what the encryption does and does not hide.
 
 There are two file types, distinguished by extension and by a leading magic
 header:

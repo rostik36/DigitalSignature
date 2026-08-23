@@ -23,7 +23,7 @@ def _complain(message: str) -> None:
 
         root = tk.Tk()
         root.withdraw()
-        messagebox.showwarning("Signature Mouse Signer", message)
+        messagebox.showwarning("Digital Signature", message)
         root.destroy()
     except Exception:  # noqa: BLE001 - headless or no display; stderr will do
         print(message, file=sys.stderr)

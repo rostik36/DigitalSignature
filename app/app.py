@@ -37,7 +37,7 @@ PREVIEW_H = 150
 class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("Signature Mouse Signer")
+        self.title("Digital Signature")
         self.resizable(False, False)
         self.configure(bg="#f4f6f9")
 
@@ -62,7 +62,7 @@ class App(tk.Tk):
     def _build_ui(self) -> None:
         header = tk.Label(
             self,
-            text="Signature Mouse Signer",
+            text="Digital Signature",
             bg="#f4f6f9",
             fg="#1f2d3d",
             font=("Segoe UI", 16, "bold"),

@@ -45,7 +45,7 @@ class AlreadyRunning(Exception):
         self.info = info or {}
         pid = self.info.get("pid")
         detail = f" (process {pid})" if pid else ""
-        super().__init__(f"Signature Mouse Signer is already running{detail}.")
+        super().__init__(f"Digital Signature is already running{detail}.")
 
 
 class SingleInstance:

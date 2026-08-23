@@ -1,4 +1,4 @@
-"""Entry point for the Signature Mouse Signer.
+"""Entry point for Digital Signature.
 
 Run with:  python run.py   (equivalently:  python -m app)
 

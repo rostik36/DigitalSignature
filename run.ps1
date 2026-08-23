@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Set up the environment and launch the Signature Mouse Signer (Windows).
+    Set up the environment and launch Digital Signature (Windows).
 
 .DESCRIPTION
     Creates a .venv on first run, installs requirements.txt into it, then
@@ -91,7 +91,7 @@ if (-not $SkipInstall)
     }
 }
 
-Write-Host '==> Starting Signature Mouse Signer' -ForegroundColor Green
+Write-Host '==> Starting Digital Signature' -ForegroundColor Green
 
 # Anchor imports on the repo root so the script works from any working directory.
 $env:PYTHONPATH = if ($env:PYTHONPATH) { "$Root;$env:PYTHONPATH" } else { $Root }
