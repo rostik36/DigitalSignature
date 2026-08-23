@@ -52,6 +52,18 @@ pip install -r requirements.txt
 python run.py           # equivalently: python -m app
 ```
 
+## Tests
+
+```powershell
+pip install -r requirements-dev.txt
+pytest
+```
+
+[`tests/test_vault.py`](tests/test_vault.py) covers the passphrase save/load
+round trip, wrong-passphrase rejection, non-ASCII passphrases, per-save salt
+freshness, and the cross-machine behaviour described under **Storage** below.
+The DPAPI-backed tests are skipped automatically off Windows.
+
 ## How to use
 
 1. **Draw signature…** — write your signature in the white canvas with your pen
@@ -101,6 +113,15 @@ Two on-disk formats, chosen by the extension you save with:
   as a convenient unlock — then the file opens with the passphrase **or** a live
   biometric (the passphrase stays as the master/fallback). Copy the file to
   another account/PC and it's unreadable noise; nothing touches the network.
+
+  > **`.sigx` files are deliberately not portable.** Because the DPAPI factor is
+  > bound to the Windows account that created the file, a `.sigx` **cannot be
+  > moved to another PC** (or another user on the same PC) — the correct
+  > passphrase will still fail to open it, reported as a wrong passphrase. This
+  > is the format working as designed, not a bug. To use the same signature on a
+  > second machine, either re-capture it there, or transfer it as `.sig.json`
+  > (**unencrypted — treat that file as sensitive**) and re-save it as `.sigx`
+  > on the new PC.
 - **`*.sig.json` — plain JSON (not encrypted).** Human-readable; use it only for
   interop (e.g. importing a capture produced by an external tool that writes
   the same `[x, y, t, p]` shape).
