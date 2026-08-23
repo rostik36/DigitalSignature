@@ -1,0 +1,6 @@
+# GUI is built on tkinter, which ships with CPython on Windows (no install needed).
+pynput>=1.7
+
+# Optional: Windows Hello (face/fingerprint) unlock for encrypted signatures.
+# Without it, encryption still works with the passphrase + Windows account.
+winsdk>=1.0.0b10 ; sys_platform == "win32"

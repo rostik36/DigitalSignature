@@ -1,0 +1,44 @@
+# --- Signature data / secrets: NEVER commit ---
+*.sigx
+*.sigx1
+*.sig.json
+signatures/
+*.pem
+*.key
+*.p12
+*.pfx
+.env
+.env.*
+secrets.json
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# --- Captures / scratch ---
+*.log
+*.tmp
+screenshots/
+out/
